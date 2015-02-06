@@ -6,10 +6,10 @@ IMAGE_NAME=radioastro/simulator
 all: build
 
 build:
-	`pwd`/copy_src.sh && docker build -t $(IMAGE_NAME) .
+	rm -rf src && docker build -t $(IMAGE_NAME) .
 
 force-build:
-	`pwd`/copy_src.sh && docker build -t $(IMAGE_NAME) --no-cache=true .
+	rm -rf src && docker build -t $(IMAGE_NAME) --no-cache=true .
 
 run:
 	docker run -v `pwd`:/results $(IMAGE_NAME)
