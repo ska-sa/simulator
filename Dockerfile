@@ -17,4 +17,3 @@ RUN git clone -b devel https://github.com/SpheMakh/pyxis
 RUN tar -zxvf casapy-42.2.30986-1-64b.tar.gz
 RUN mkdir /results
 cmd ./runsim.sh
-# cmd pyxis CFG=/sims.cfg LOG=/results/output.log OUTFILE=/results/results OUTDIR=/results azishe
