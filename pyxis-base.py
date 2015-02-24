@@ -7,63 +7,20 @@ import math
 from scipy.ndimage.measurements import *
 # important to import from Pyxis, as this takes care of missing displays etc.
 
-DEG = 180/math.pi;
-ARCMIN = DEG*60;
-ARCSEC = ARCMIN*60;
-FWHM = math.sqrt(math.log(256));  # which is 2.3548;
 import Pyxis
 import imager
 import ms
 import mqt
 import std
+import json
 
 from Pyxis.ModSupport import *
 
-SIMSCRIPT = "turbo-sim.py"
-SIMJOB = "_tdl_job_1_simulate_MS"
+DEG = 180/math.pi;
+ARCMIN = DEG*60;
+ARCSEC = ARCMIN*60;
+FWHM = math.sqrt(math.log(256));  # which is 2.3548;
 
-imager.npix = 512
-imager.cellsize = ".5arcsec"
-imager.mode = "channel"
-imager.stokes = "I"
-imager.wprojplanes = 0
-imager.weight = "natural"
-imager.cachesize = "32000"
-imager.LWIMAGER_PATH = "lwimager" # 
-imager.DIRTY_IMAGE_Template = "${OUTFILE}.dirty.fits"
-imager.RESTORED_IMAGE_Template = "${OUTFILE}.restored.fits"
-
-# destination directory: if MS is foo.MS, then directory is [OUTDIR]/plots-foo[-LABEL] 
-DESTDIR_Template = '${OUTDIR>/}plots-${MS:BASE}'
-
-# base output file: DESTDIR/foo
-OUTFILE_Template = '${DESTDIR>/}${MS:BASE}${-<LABEL}'
-
-# this means: if MS is unset, no logfile. If MS is foo.MS, logfile will be set to [DESTDIR/]log-foo.txt
-LOG_Template = lambda: II("${DESTDIR>/}log-${MS:BASE}.txt") if MS else II("${OUTDIR>/}log-ska1sims.txt");
-
-WEIGHTS = "uniform"
-
-
-OBSDIR = 'observatories'
-_OBS = {
-      'meerkat':'MeerKAT64_ANTENNAS',
-      'kat-7':'KAT7_ANTENNAS',
-      'jvla-a':'VLAA_ANTENNAS',
-      'wsrt':'WSRT_ANTENNAS'
-}
-
-KATDIR = 'katalog'
-_KATALOG = {
-         'nvss6deg':'nvss6deg.lsm.html',
-         'scubed1deg':'scubed1deg.lsm.html',
-         'rand_pnts':'random_pts.txt',
-         'rand_mix':'random.txt',
-         'rand_mix_fits':'random.fits',
-         '3c147_no_core':'3c147_field_no_3c147.lsm.html',
-         '3c147_field':'3c147.lsm.html',
-}
-_SKYTYPE = {'tigger-lsm':'.lsm.html','ascii':'.txt','fits':'.fits'}
 
 MEASURE_PSF = False
 MEASURE_SIDELOBES = False
@@ -85,14 +42,9 @@ INTEGRATION = None # None means look in MS
 BANDWIDTH = None   # None means look in MS
 WAVELENGTH = 0.21
 BASEFREQ = 1.4e+9
-STATSFILE_Template = "${OUTDIR>/}genstats.py"
 
 STATQUALS = ()
 
-TDLCONF = 'tdlconf.profiles'
-CFG = 'meerkat_sims.cfg'
-CHANNELIZE = 0
-NCHAN = 1
 def str2bool(val):
     if val.lower() in 'true yes 1'.split():
         return True
@@ -166,11 +118,6 @@ def readCFG(cfg='$CFG'):
        if str2bool(params[dcv]):
           _deconv.append(dcv.lower())
     
-#    own_tdl = str2bool(params['upload_tdl'])
-#    if own_tdl:
-#        v.TDLCONF = params['tdlconf']
-#        v.TDLSEC = params['tdlsection']
-
     global RADIUS,FLUXRANGE
     RADIUS = float(params['radius'])
     FLUXRANGE = params['fluxrange'].split('-')
@@ -186,25 +133,126 @@ def readCFG(cfg='$CFG'):
     return options,_imager,_deconv
 
 
-def d_or_h_ms2deg(coord,hms=True):
-    tmp = ''
-    if coord.startswith('-'):
-       sign = -1
-    else:
-       sign = 1
-    for i in coord:
-        if i.isdigit():
-            tmp += i
-        else:
-            tmp += ' '
-    coord = map(float,tmp.split())
-    deg = 0
-    for i,val in enumerate(coord):
-        deg += val*60**i
-    return sign*deg*15 if hms else sign*deg
+def load_from_json(fname='$CFG',set_globals=True):
+    """ load simulation from a json config file """
+    
+    with open(II(fname)) as jsn_std:
+        params = json.load(jsn_std)
+    # remove empty strings
+    for key in params.keys():
+        if params[key] =="":
+            del params[key]
 
-_SEFD = {}
-_SEFD['MKT'] = {'1b':831,'2':551}
+    get_opts = lambda prefix: filter(lambda a: a[0].startswith(prefix), params.items()) 
+
+    ms_dict = dict([(key.split('ms_')[-1],val) for (key,val) in get_opts('ms_') ] )
+    im_dict = dict([(key,val) for (key.split('_im')[-1],val) in get_opts('im_') ] )
+
+    _deconv = {}
+    for dcv in 'lwimager wsclean moresane casa'.split():
+        if params[dcv]:
+            _deconv.update( {dcv:dict([(key.split(dcv+'_')[-1],val) for (key,val) in get_opts(dcv+'_') ] )} )
+
+    if set_globals:
+        # I do this in different phases to avoid confusion
+        
+        # Start with simulation related things
+        global FITS,TIGGER,TDLSEC,KATALOG,SELECT,ADDNOISE,NOISE
+
+        TDLSEC = 'turbo-sim:custom'
+        ADDNOISE = params['add_noise']
+        NOISE = params['vis_noise_std']
+
+        if params['sky_type'].lower() is 'fits':
+            FITS = params['sky_model']
+        elif params['sky_type'].lower() in 'tigger-lsm tigger ascii':
+            TIGGER = params['sky_model']
+
+        #TODO(Sphe) update form to allow katalog_id=0, i.e don't use katalog
+        if params['katalog_id']: 
+            KATALOG = '%s/%s'%(KATDIR,_KATALOG[params['katalog_id']])
+    
+        global FLUXRANGE,RADIUS
+        FLUXRANGE = map(float,params['fluxrange'].split('-'))
+        RADIUS = params['radius']
+
+        global OUTPUT,CHANNELIZE,IMAGER,USE_DEFAULT_IMAGING_SETTINGS
+        CHANNELIZE = params['channelise']
+        OUTPUT_TYPE = params['output']
+        IMAGER = params['imager']
+        USE_DEFAULT_IMAGING_SETTINGS = params['use_default_im']
+
+        global OBSERVATORY,POSITIONS,MS_LABEL
+        OBSERVATORY = params['observatory'].lower()
+        POSITIONS = '%s/%s'%(OBSDIR,_OBS[OBSERVATORY])
+        if OBSERVATORY.startswith('jvla'):
+            MS_LABEL = OBSERVATORY
+            OBSERVATORY = 'VLA'
+
+    return ms_dict, im_dict, _deconv
+
+        
+def verify_sky(fname):
+    ext = fname.split('.')[-1]
+    if ext.lower() == 'fits':
+        return 'FITS'
+    elif ext.lower() == 'txt' or fname.endswith('.lsm.html'):
+        return 'TIGGER'
+    else:
+        raise TypeError('Sky model "%s" has to be either one of FITS,ASCII,Tigger Model (lsm.html) '%fname)
+
+
+def simsky(msname='$MS', lsmname='$LSM', tdlsec='$TDLSEC', tdlconf='$TDLCONF',
+           column='$COLUMN', noise=0, args=[],
+           addToCol=None,**kw):
+    """ Simulates visibilities into an MS """
+
+    msname, lsmname, column, tdlsec, tdlconf = interpolate_locals('msname lsmname'
+        ' column tdlsec tdlconf')
+    
+    fits = True if verify_sky(lsmname) is 'FITS' else False
+
+    v.MS = msname
+    v.LSM = lsmname
+
+    _column = 'MODEL_DATA' if addToCol else column
+
+    if fits:
+        _column = 'MODEL_DATA' if noise else column
+        predict_from_fits(lsmname, wprojplanes=128, column=_column)
+
+        if noise:
+            simnoise(noise=noise,addToCol=_column,column=column)
+    else:
+        args = ["${ms.MS_TDL} ${lsm.LSM_TDL}"] + list(args)
+
+        options = {}
+        options['ms_sel.output_column'] = _column
+
+        if noise:
+            options['noise_stddev'] = noise
+
+        options.update(kw)
+        mqt.run(TURBO_SIM, job='_tdl_job_1_simulate_MS',
+                config=tdlconf, section=tdlsec, options=options, args=args)
+
+    if addToCol:
+        tab = ms.msw()
+        col1 = tab.getcol(addToCol)
+        col2 = tab.getcol('MODEL_DATA')
+        comb = col1 + col2
+        nrows = len(comb)
+        rowchunk = nrows//5
+
+        for row0 in range(0,nrows,rowchunk):
+            nr = min(nrows-row0,rowchunk)
+            info('MODEL_DATA + $addToCol --> $column : rows %d-%d'%(row0,row0+nr) )
+            tab.putcol(column,comb[row0:row0+nr],row0,nr)
+        tab.close()
+
+document_globals(simsky,"MS LSM COLUMN TDLSEC TDLCONF")    
+
+
 
 def get_sefd(freq=650e6):
     freq0 = freq*1e-6 # work in MHz
@@ -217,32 +265,7 @@ def get_sefd(freq=650e6):
         band = '1b'
     return _SEFD['MKT'][band]
 
-def clearstats ():
-    if exists(STATSFILE):
-        info("removing $STATSFILE");
-        x.sh("rm $STATSFILE");
-
 import fcntl
-
-def _statsfile ():
-    """Initializes stats file (if not existing), returns open file""";
-    ff = file(STATSFILE,"a");
-    fcntl.flock(ff,fcntl.LOCK_EX);
-    # seek to end of file, if empty, make header
-    ff.seek(0,2);
-    if not ff.tell():
-        ff.write("""# auto-generated noise stats file\n""");
-        ff.write("""settings = dict(%s)\n"""%",".join([ "%s=%s"%(key,repr(val)) for key,val in globals().iteritems()
-                if not callable(val) and key.upper() == key ]));
-        ff.write("noisestats = {}\n");
-    return ff;
-
-def _writestat (name,value,*qualifiers):
-    ff = _statsfile();
-    subsets = list(STATQUALS) + list(qualifiers);
-    subsets = ','.join(map(repr,subsets));
-    ff.write("noisestats.setdefault('%s',{})[%s] = %s\n"%(name,subsets,repr(value)));
-    fcntl.flock(ff,fcntl.LOCK_UN);
 
 def compute_vis_noise (noise=0,sefd=SEFD):
   """Computes nominal per-visibility noise"""
@@ -259,17 +282,11 @@ def compute_vis_noise (noise=0,sefd=SEFD):
   tab.close();
   spwtab.close();
   info(">>> $MS freq %.2f MHz (lambda=%.2fm), bandwidth %.2g kHz, %.2fs integrations, %.2fh synthesis"%(freq0*1e-6,WAVELENGTH,bw*1e-3,dt,dtf/3600));
-  _writestat("freq0",freq0);
-  _writestat("wavelength",WAVELENGTH);
-  _writestat("bw",bw);
-  _writestat("synthesis_time",dtf);
-  _writestat("integration",dt);
   if not noise:
     noise = sefd/math.sqrt(2*bw*dt);
     info(">>> SEFD of %.2f Jy gives per-visibility noise of %.2f mJy"%(sefd,noise*1000));
   else:
     info(">>> using per-visibility noise of %.2f mJy"%(noise*1000));
-  _writestat("vis_noise",noise);
   return noise;
 
 def get_weight_opts (weight):
@@ -307,52 +324,6 @@ def get_weight_opts (weight):
     quals.append("taper=0");
   return opts,weight_txt,quals;
 
-def measure_psf (psffile,arcsec_size=4,savefig=None,title=None):
-  ff = pyfits.open(psffile);
-  pp = ff[0].data.T[:,:,0,0]
-  secpix = abs(ff[0].header['CDELT1']*3600)
-  ## get midpoint and size of cross-sections
-  xmid,ymid = maximum_position(pp)
-  ## print xmid,ymid,pp[xmid,ymid]
-  sz = int(arcsec_size/secpix);
-  xsec = pp[xmid-sz:xmid+sz,ymid]
-  ysec = pp[xmid,ymid-sz:ymid+sz]
-  axis = numpy.arange(-sz,sz)*secpix
-  def fwhm (tsec):
-    from scipy.interpolate import interp1d 
-    tmid = len(tsec)/2;
-    # find first minima off the peak, and flatten cross-section outside them
-#    print tsec,tmid
-    xmin = minimum_position(tsec[:tmid])[0];
-    tsec[:xmin] = tsec[xmin];
-    xmin = minimum_position(tsec[tmid:])[0];
-    tsec[tmid+xmin:] = tsec[tmid+xmin];
-    if tsec[0] > .5 or tsec[-1] > .5:
-      warn("PSF FWHM over %2.f arcsec"%(arcsec_size*2));
-      return arcsec_size,arcsec_size;
-    x1 = interp1d(tsec[:tmid],range(tmid))(0.5);
-    x2 = interp1d(1-tsec[tmid:],range(tmid,len(tsec)))(0.5);
-    return x1,x2;
-  from matplotlib import pyplot
-  pyplot.figure(figsize=(10,10))
-  pyplot.plot(axis,xsec)
-  pyplot.plot(axis,ysec)
-  ix0,ix1 = fwhm(xsec)
-  iy0,iy1 = fwhm(ysec)
-  pyplot.plot((numpy.array([ix0,ix1])-sz)*secpix,[0.5,0.5])
-  pyplot.plot((numpy.array([iy0,iy1])-sz)*secpix,[0.5,0.5])
-  rx,ry = (ix1-ix0)*secpix,(iy1-iy0)*secpix
-  r0 = (rx+ry)/2
-  pyplot.text(axis[-1],1,'FWHM %.2f" by %.2f" (mean %.2f")'%(rx,ry,r0),ha='right',size=20)
-  if title:
-    pyplot.title(title);
-  if savefig:
-    pyplot.savefig(savefig,dpi=100)
-  else:
-    pyplot.show();
-  return rx,ry
-  #print "Nominal resolution is %.2f by %.2f\""%(rx,ry)
-  #print "Corresponding to a max baseline of",0.21/(r0/3600*math.pi/180)
 
 def madnoise(fitsname,channelise=0,freq_axis=False):
     """ estimate image noise """
@@ -378,6 +349,7 @@ def measure_image_noise (noise=0,scale_noise=1.0,add_noise=False,rowchunk=100000
     info(">>>   rms pixel noise is %g uJy"%(noise*1e+6))
     return noise
 
+
 def measure_sdl(r0,r1,**kw):
     r0 = r0 or int(SIDELOBES_R0_ARCSEC/SIDELOBES_CELL_ARCSEC)
     r1 = r1 or int(SIDELOBES_R1_ARCSEC/SIDELOBES_CELL_ARCSEC)
@@ -395,6 +367,7 @@ def measure_sdl(r0,r1,**kw):
     info(">>>   rms far sidelobes is %g (%.2f<=r<=%.2fdeg"%(rms,r0,r1));
     return rms,r0,r1
 
+
 def simnoise (noise=0,rowchunk=100000,skipnoise=False,addToCol=None,scale_noise=1.0,column='MODEL_DATA'):
   conf = MS.split('_')[0]
   spwtab = ms.ms(subtable="SPECTRAL_WINDOW")
@@ -410,13 +383,13 @@ def simnoise (noise=0,rowchunk=100000,skipnoise=False,addToCol=None,scale_noise=
     data = noise*(numpy.random.randn(*dshape) + 1j*numpy.random.randn(*dshape)) * scale_noise
     if addToCol: 
        data+=colData[row0:(row0+nr)]
-       info(" $addToCol + noise --> CORRECTED_DATA (rows $row0 to %d)"%(row0+nr-1))
-       column = 'CORRECTED_DATA'
+       info(" $addToCol + noise --> $column (rows $row0 to %d)"%(row0+nr-1))
     else : info("Adding noise to $column (rows $row0 to %d)"%(row0+nr-1))
     tab.putcol(column,data,row0,nr);
   tab.close() 
 
 SKIPNOISE = False
+
 
 def apply_rfi_flagging (rfihist='RFIdata/rfipc.cp'):
   """Applies random flagging based on baseline length. Flagging percentages are taken
@@ -446,6 +419,7 @@ def apply_rfi_flagging (rfihist='RFIdata/rfipc.cp'):
   unlucky = rr<thr
   info(">>> mock RFI applied, flagged fraction is %.2f"%(float(unlucky.sum())/len(thr)));
   tab.putcol("FLAG_ROW",unlucky);
+
   
 def clear_flags ():
   tab = ms.msw();
@@ -454,38 +428,10 @@ def clear_flags ():
   
 import numpy.random  
   
-def addnoise (noise=0,rowchunk=100000):
-  """adds noise to MODEL_DATA, writes to CORRECTED_DATA""";
-  # compute expected noise
-  noise = compute_vis_noise(noise);
-  # fill MS with noise
-  tab = ms.msw()
-  nrows = tab.nrows();
-  for row0 in range(0,nrows,rowchunk):
-    nr = min(rowchunk,nrows-row0);
-    info("Copying MODEL_DATA+noise to CORRECTED_DATA (rows $row0 to %d)"%(row0+nr-1));
-    data = tab.getcol("MODEL_DATA",row0,nr);
-    data += noise*(numpy.random.randn(*data.shape) + 1j*numpy.random.randn(*data.shape));
-    tab.putcol("CORRECTED_DATA",data,row0,nr)
-  tab.close()
-
-CUBE_IMAGE_Template = "${MS:BASE}.1chan.fits";
-
-def decompose_cube (image,freq0=1000,delta=1000):
-  cube = pyfits.open(image)[0].data
-  ff = pyfits.open(CUBE_IMAGE);
-  ff[0].header['CRVAL4'] = freq0*1e+6;
-  ff[0].header['CDELT4'] = delta*1e+6;
-  nchan = cube.shape[0];
-  info("decomposing $image into $nchan per-channel images, faking $delta MHz-wide image at $freq0 MHz");
-  for i in range(nchan):
-    ff[0].data[0,...] = cube[i,...];
-    out = os.path.splitext(image)[0]+II("$i.fits");
-    info("writing $out");
-    ff.writeto(out,clobber=True);
-  
 MSLIST_Template = '${OUTDIR>/}mslist.txt'
+
 DOALL = False
+
 def _addms(msname = "$MS"):
   """ Keeps track of MSs when making MSs using multiple threds.
     The MS names are stored into a file which can be specified 
@@ -514,115 +460,26 @@ def get_mslist(filename):
 define("MAKEMS_REDO",False,"if False, makems will omit existing MSs");
 define("MAKEMS_OUT","MS","place MSs in this subdirectory");
 
-def makems (conf="MeerKAT64",writeAutoCorr=True,hours=8,dtime=60,dec=-40,ra='0:0:0',freq0=1400e6,nchan=1,dfreq=3.9e3,nband=1,label='',start_time=None,shift=False,start_freq=1.5):
-  """Makes a MS given a Casa Table of itrf antenna positions 
-  conf is e.g. SKA1REF or MeerKAT64 (antenna table $conf_ANTENNAS must exist)
-  hours is total synthesis time, in hours
-  integration is integration time, in seconds 
-  dec is declination
-  freq0 is base freq in MHz
-  nchan is number of channels
-  channels is channel width, in kHz
-  nband is how many spws to split the channels into
-  """
-  # make sure that floats are floats and ints are ints
-  dec,hours,dtime,freq0,dfreq = map(float,[dec,hours,dtime,freq0,dfreq])
-  nchan,nband = map(int,[nchan,nband])
-  if label =='None': label=''
-  for anttab in conf,"$conf","${conf}_ANTENNAS","Layouts/${conf}_ANTENNAS":#,"SimsCont_Cosm/${conf}_ANTENNAS":
-    if exists(anttab):
-      anttab = II(anttab);
-      break;
-  else:
-    abort("configuration $conf not found");
-  conf = os.path.basename(anttab);
-  if conf.endswith("_ANTENNAS"):
-    conf = conf.rsplit("_",1)[0];
-  if MAKEMS_OUT:
-    makedir("$MAKEMS_OUT");
-  msname = II("${MAKEMS_OUT>/}%s_%dh%ds_dec%+d_%dMHz_%dch${_<label}.MS"%(conf,hours,dtime,dec,freq0/1e6,nchan-1 if shift else nchan));
-  info("ms $msname, configuration $conf, antenna table $anttab");
-  if exists(msname):
-    if not MAKEMS_REDO:
-      info("$msname already exists and MAKEMS_REDO=False, skipping");
-      v.MS = msname
-      if DOALL: _addms(msname)
-      return;
-    x.sh("rm -fr $msname");
-  conffile = II("makems.${msname:BASE}.cfg");
-  if start_time == None:
-   if msname.startswith(II('${MAKEMS_OUT>/}SKASUR')): # If SKASUR MS
-    # work out start time: 12:50:0 is middle of observation, so subtract half
-    date = '2000/1/5'
-    m0 = (8.83*60) - (hours*60)//2
-    h0 = m0//60;
-    m0 = m0%60;
-   else : # Assume SKA-Mid MS
-    # work out start time: 19:45 is middle of observation, so subtract half
-    date = "2011/11/16"
-    m0 = (19.75*60)-(hours*60.)//2;
-    h0 = m0//60;
-    m0 = m0%60;
-  start_time = start_time or '%s/%d/%d/00'%(date,h0,m0)
-  MSName = "%s"%(msname.split(MAKEMS_OUT+"/")[-1])
-  file(conffile,"w").write(II("""WriteAutoCorr=$writeAutoCorr
-StartFreq=%g
-StepFreq=%g
-NFrequencies=$nchan
-WriteImagerColumns=True
-StepTime=$dtime
-#TileSizeRest=10
-NParts=1
-MSDesPath=.
-AntennaTableName=$anttab
-Declination=${dec}.0.0
-NBands=$nband
-RightAscension=$ra
-StartTime=%s  # 19:00 is center
-MSName=$MSName
-NTimes=%d
-#TileSizeFreq=16"""%(freq0-(dfreq)*start_freq,dfreq,start_time,(hours*3600)//dtime)));
-  info("creating $msname: ${hours}h synthesis, ${dtime}s integration, Dec=$dec, $nchan channels of %.4g kHz starting at %.4g MHz"%(dfreq/1e3,freq0/1e6));
-  # run makems
-  x.sh("/usr/bin/makems $conffile");
-  if exists(MSName+"_p0") and not exists(msname):
-    x.mv("${MSName}_p0 $msname");
-    for item in '.gds _p0.vds'.split():
-      if os.path.exists('%s%s'%(MSName,item)) : xo.rm('%s%s -f'%(MSName,item))
-#  pyrap.tables.addImagingColumns(msname)
-  v.MS = msname;
-  if DOALL: _addms(msname)
-  # plot uv-coverage
-  if not os.path.exists(DESTDIR): x.sh('mkdir -p $DESTDIR ')
-  ms.plot_uvcov(ms=.1,width=10,height=10,dpi=150,save="$OUTFILE-uvcov.png")
-
-document_globals(makems,"MAKEMS_*");
-
-define("SCWEIGHT","uniform","weight for simcube");
-define("SCWEIGHTFOV","512arcsec","weight_fov for simcube");
-define("SCROBUST","","robustness parameter for simcube");
-define("SCTAPER",1,"taper for simcube, in arcsec. 0 for none");
 
 def predict_from_fits (cube,padding=1.5,noise=0,column='DATA',wprojplanes=0):
-    ms.set_default_spectral_info()
     import im.lwimager
     im.lwimager.predict_vis(image=cube,padding=padding,copy=False,column=column,wprojplanes=wprojplanes);
     if noise > 0:
         simnoise(addToCol=column,noise=noise)
-#document_globals(simcube,"SC*");
+
 
 def flag_stepped_timeslot (step=3):
-  """Flags every Nth timeslot"""
-  nant = ms.ms(subtable="ANTENNA").nrows();
-  tab = ms.msw();
-  nb = nant*(nant+1)/2
-  frow = tab.getcol("FLAG_ROW");
-  nr = len(frow);
-  nt = len(frow)/nb;
-  info("$MS has $nr rows, $nant antennas, $nb baselines and $nt timeslots, flagging every $step timeslots");
-  frow = frow.reshape([nt,nb]);
-  frow[::step,:] = True;
-  tab.putcol("FLAG_ROW",frow.reshape((nr,)));
+    """Flags every Nth timeslot"""
+    nant = ms.ms(subtable="ANTENNA").nrows();
+    tab = ms.msw();
+    nb = nant*(nant+1)/2
+    frow = tab.getcol("FLAG_ROW");
+    nr = len(frow);
+    nt = len(frow)/nb;
+    info("$MS has $nr rows, $nant antennas, $nb baselines and $nt timeslots, flagging every $step timeslots");
+    frow = frow.reshape([nt,nb]);
+    frow[::step,:] = True;
+    tab.putcol("FLAG_ROW",frow.reshape((nr,)));
 
 def imdata(fitsname,channelise=0,freq_axis=False):
     hdu = pyfits.open(fitsname)
@@ -633,22 +490,25 @@ def imdata(fitsname,channelise=0,freq_axis=False):
     if channelise and freq_axis is not False:
         img[freq_axis] = range(channelise)
     return data[img]
+
    
 def fitsInfo(fits):
-  hdr = pyfits.open(fits)[0].header
-  ra = hdr['CRVAL1'] 
-  dec = hdr['CRVAL2']
-  naxis = hdr['NAXIS']
-  if naxis>3: freq_ind = 3 if hdr['CTYPE3'].startswith('FREQ') else 4
-  else: 
-    freq_ind = 3
-    if hdr['CRTYPE3'].startswith('FREQ') is False: 
-       freq_axis = False
-       return (ra,dec),freq_axis,naxis
-  nchan = hdr['NAXIS%d'%freq_ind]
-  dfreq = hdr['CDELT%d'%freq_ind]
-  freq0 = hdr['CRVAL%d'%freq_ind] + hdr['CRPIX%d'%freq_ind]*dfreq
-  return (ra,dec),(freq0,dfreq,nchan),naxis
+    hdr = pyfits.open(fits)[0].header
+    ra = hdr['CRVAL1'] 
+    dec = hdr['CRVAL2']
+    naxis = hdr['NAXIS']
+    if naxis>3: 
+        freq_ind = 3 if hdr['CTYPE3'].startswith('FREQ') else 4
+    else: 
+        freq_ind = 3
+        if hdr['CRTYPE3'].startswith('FREQ') is False: 
+            freq_axis = False
+            return (ra,dec),freq_axis,naxis
+    nchan = hdr['NAXIS%d'%freq_ind]
+    dfreq = hdr['CDELT%d'%freq_ind]
+    freq0 = hdr['CRVAL%d'%freq_ind] + hdr['CRPIX%d'%freq_ind]*dfreq
+    return (ra,dec),(freq0,dfreq,nchan),naxis
+
 
 def swap_stokes_freq(fitsname,freq2stokes=False):
   info('Checking STOKES and FREQ in FITS file, might need to swap these around.')
@@ -696,96 +556,5 @@ def swap_stokes_freq(fitsname,freq2stokes=False):
     except KeyError: hdr.update('CUNIT4','Hz    ')
     warn('Swapping FREQ and STOKES axes in the fits header [$fitsname]. This is a  MeqTrees work arround.')
     pyfits.writeto(fitsname,np.rollaxis(data,1),hdr,clobber=True)
-  return 0;
+  return 0
 
-
-def deg2hms(deg):
-  deg = deg * 24/360.
-  hrs = deg - deg%1
-  mins_tmp  = (deg - hrs)%1 * 60
-  mins = mins_tmp - mins_tmp%1
-  secs = (mins_tmp - mins)*60
-  return '%d:%d:%.2f'%(hrs,mins,secs)
-
-_SOFIA_DEFAULTS = {'steps': {'doFlag' : 'false',\
-'doSmooth' : 'flase',\
-'doScaleNoise' : 'false',\
-'doSCfind' : 'true',\
-'doThreshold' : 'false',\
-'doWavelet' : 'false',\
-'doCNHI' : 'false',\
-'doMerge' : 'true',\
-'doReliability' : 'true',\
-'doParameterise' : 'true',\
-'doWriteMask' : 'true',\
-'doWriteCat' : 'true',\
-'doMom0' : 'false',\
-'doMom1' : 'false',\
-'doCubelets' : 'false',\
-'doDebug' : 'false'},\
-'import': {'inFile' : '',\
-'weightsFile' : '',\
-'maskFile' : '',\
-'weightsFunction' : '',\
-'subcube' : [],\
-'subcubeMode' : 'wcs'},\
-'flag': {'regions' : []},\
-'smooth': {'kernel' : 'gaussian',\
-'edgeMode' : 'constant',\
-'kernelX' : 3.0,\
-'kernelY' : 3.0,\
-'kernelZ' : 3.0},\
-'scaleNoise': {'statistic' : 'mad',\
-'edgeX' : 0,\
-'edgeY' : 0,\
-'edgeZ' : 0},\
-'SCfind': {'threshold' : 4.0,\
-'sizeFilter' : 0.0,\
-'maskScaleXY' : 2.0,\
-'maskScaleZ' : 2.0,\
-'edgeMode' : 'constant',\
-'rmsMode' : 'negative',\
-'kernels' : [[ 0, 0, 0,'b'],[ 0, 0, 2,'b'],[ 0, 0, 4,'b'],[ 0, 0, 8,'b'],[ 0, 0,16,'b'],[ 3, 3, 0,'b'],[ 3, 3, 2,'b'],[ 3, 3, 4,'b'],[ 3, 3, 8,'b'],[ 3, 3,16,'b'],[ 6, 6, 0,'b'],[ 6, 6, 2,'b'],[ 6, 6, 4,'b'],[ 6, 6, 8,'b'],[ 6, 6,16,'b'],[ 9, 9, 0,'b'],[ 9, 9, 2,'b'],[ 9, 9, 4,'b'],[ 9, 9, 8,'b'],[ 9, 9,16,'b']],\
-'kernelUnit' : 'pixel',\
-'verbose':'true'},\
-'threshold': {'threshold' : 4.0,\
-'clipMethod' : 'relative',\
-'rmsMode' : 'std',\
-'verbose' : 'false'}, \
-'merge': {'mergeX' : 3,\
-'mergeY' : 3,\
-'mergeZ': 3,\
-'minSizeX' : 3,\
-'minSizeY' : 3,\
-'minSizeZ' : 2}, \
-'reliability': {'parSpace' : ['ftot','fmax','nrvox'],\
-'kernel' : [0.15,0.05,0.1],\
-'fMin' : 0.0,\
-'relThresh' : 0.9},\
-'parameters': {'fitBusyFunction': 'false', 'optimiseMask':'false'}, \
-'writeCat': {'basename' : '',\
-'writeASCII' : 'true',\
-'writeXML' : 'false',\
-'writeSQL' : 'false',\
-'parameters' : ['*']}}
-
-# wsclean work around
-def add_weight_spectrum(msname='$MS'):
- msname = interpolate_locals('msname')
- tab = pyrap.tables.table(msname,readonly=False)
- try: tab.getcol('WEIGHT_SPECTRUM')
- except RuntimeError:
-  warn('Did not find WEIGHT_SPECTRUM column in $msname')
-  from pyrap.tables import maketabdesc
-  from pyrap.tables import makearrcoldesc
-  coldmi = tab.getdminfo('DATA')
-  dshape = tab.getcol('DATA').shape
-  coldmi['NAME'] = 'weight_spec'
-  info('adding WEIGHT_SPECTRUM column to $msname')
-  shape = tab.getcol('DATA')[0].shape
-  tab.addcols(maketabdesc(makearrcoldesc('WEIGHT_SPECTRUM',0,shape=shape,valuetype='float')),coldmi)
-  ones = np.ndarray(dshape)
-  info('Filling WEIGHT_SPECTRUM with unity')
-  ones[...] = 1
-  tab.putcol('WEIGHT_SPECTRUM',ones)
- tab.close()
