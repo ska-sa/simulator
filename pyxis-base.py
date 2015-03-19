@@ -179,7 +179,7 @@ def load_from_json(fname='$CFG',set_globals=True):
         global OUTPUT,CHANNELIZE,IMAGER,USE_DEFAULT_IMAGING_SETTINGS
         CHANNELIZE = params['channelise']
         OUTPUT_TYPE = params['output']
-        IMAGER = params['imager']
+        IMAGER = params['imager'].lower()
         USE_DEFAULT_IMAGING_SETTINGS = params['use_default_im']
 
         global OBSERVATORY,POSITIONS,MS_LABEL
