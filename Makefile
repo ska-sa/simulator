@@ -1,5 +1,5 @@
 #!make
-IMAGE_NAME=radioastro/simulator
+IMAGE_NAME=skasa/simulator
 
 .PHONY: all build run force-build
 
