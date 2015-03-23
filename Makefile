@@ -12,4 +12,4 @@ force-build:
 	rm -rf src && docker build -t $(IMAGE_NAME) --no-cache=true .
 
 run:
-	docker run -v `pwd`:/results $(IMAGE_NAME)
+	docker run -v `pwd`/input:/input:ro $(IMAGE_NAME)
