@@ -3,13 +3,16 @@ IMAGE_NAME=skasa/simulator
 
 .PHONY: all build run force-build
 
-all: build
+all: download build run
+
+download:
+	./download.sh
 
 build:
-	rm -rf src && docker build --pull -t $(IMAGE_NAME) .
+	docker build -t $(IMAGE_NAME) .
 
 force-build:
-	rm -rf src && docker build --pull -t $(IMAGE_NAME) --no-cache=true .
+	docker build --pull -t $(IMAGE_NAME) --no-cache=true .
 
 run:
 	docker run -v `pwd`/input:/input:ro $(IMAGE_NAME) 
