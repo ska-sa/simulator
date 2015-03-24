@@ -8,8 +8,17 @@ You may image using LWIMAGER, [WSCLEAN](http://sourceforge.net/projects/wsclean)
 ## Running the simulator
 To run this simulator, you need supply the simulator a configuration file; parameters.json is an example.
 
-Run `$ pyxis help[azishe]` for help  
-Run as : `$ $pyxis CFG=json_config_file azishe`
+inside src folder run for help:
+
+`$ pyxis help[azishe]`
+
+To run:
+
+`$ $pyxis CFG=json_config_file azishe`
+
+Or using docker:
+
+`$ make`
 
 ## Available Telescopes
 You may request a Telescope via the github [issues](https://github.com/ska-sa/simulator/issues) service.  
