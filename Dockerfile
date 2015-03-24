@@ -21,7 +21,7 @@ RUN apt-get update && apt-get -qy install \
     libkrb5-3 \
     libgssapi-krb5-2
 
-ADD . /code
+ADD src /code
 RUN ln -s /code/run.sh /run.sh
 
 RUN mkdir /input /output
