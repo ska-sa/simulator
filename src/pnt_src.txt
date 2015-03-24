@@ -1,0 +1,2 @@
+#format:ra_d dec_d i emaj_s emin_s pa_d
+0 -30 20 30 40 56 
