@@ -8,7 +8,7 @@ fi
 
 export PATH=/code/PyMORESANE/bin:$PATH
 
-if [ -z "$USER"]; then
+if [ -z "$USER" ]; then
   export USER=root
 fi
 
