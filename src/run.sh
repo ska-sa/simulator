@@ -15,5 +15,5 @@ fi
 echo "where are we now"
 pwd
 
-/code/perf_flop_per_watt.sh ${DATA}/output "pyxis CFG=${DATA}/input/parameters.json OUTFILE=/${DATA}/output/results OUTDIR=${DATA}/output azishe"
+pyxis CFG=${DATA}/input/parameters.json OUTFILE=/${DATA}/output/results OUTDIR=${DATA}/output azishe
 
