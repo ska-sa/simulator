@@ -26,6 +26,8 @@ RUN ln -s /code/run.sh /run.sh
 
 RUN mkdir /input /output
 
+RUN apt-get install -qy linux-tools-common linux-tools-generic-lts-trusty linux-tools-3.16.0-33-generic bc
+
 WORKDIR /code
 cmd /run.sh
 
