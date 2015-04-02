@@ -147,7 +147,35 @@ def azishe(config='$CFG'):
         katalog = '%s/%s'%(KATDIR,_KATALOG[params['katalog_id']])
 
         lsmname = II('${MS:BASE}.lsm.html')
-        x.sh('tigger-convert --recenter=$direction $katalog $lsmname -f')
+
+        radius = float(params['radius'])
+        fluxrange = params['fluxrange'].split('-')
+        if len(fluxrange)>1:
+            fluxrange = map(float,fluxrange)
+        elif len(fluxrange)==1:
+            fluxrange = [0,float(fluxrange[0])]
+
+        
+        select = ''
+        fits = verify_sky(katalog) == 'FITS'
+        if radius or fluxrange:
+            if radius: select += '--select="r<%fdeg" '%radius
+            if fluxrange: 
+                select += '--select="I<%f" '%fluxrange[1]
+                select += '--select="I>%f" '%fluxrange[0]
+        if not fits:
+            x.sh('tigger-convert $select --recenter=$direction $katalog $lsmname -f')
+        else:
+            from pyrap.measures import measures
+            dm = measures()
+            direction = dm.direction('J2000',ms_opts[ra],ms_opts[dec])
+            ra = np.rad2deg(direction['m0']['value'])
+            dec = np.rad2deg(direction['m1']['value'])
+            hdu = pyfits.open(temp_file)
+            hdu[0].hdr['CRVAL1'] = ra
+            hdu[0].hdr['CRVAL2'] = dec
+            hdu.writeto(tmp_file,clobber=True)
+
         simsky(lsmname=lsmname,tdlsec='turbo-sim:custom',noise=noise,column='CORRECTED_DATA')
 
     skymodel = params['sky_model']
@@ -167,6 +195,7 @@ def azishe(config='$CFG'):
         else:
             im.IMAGER = deconv.lower()
             im.make_image(dirty=False,restore=_deconv[deconv],restore_lsm=False,**im_dict)
+    xo.sh('tar -czvf ${OUTDIR>/}${MS:BASE}.tar.gz $msname')
             
     
 def get_sefd(freq=650e6):
@@ -189,7 +218,6 @@ def verify_sky(fname):
         return 'TIGGER'
     else:
         raise TypeError('Sky model "%s" has to be either one of FITS,ASCII,Tigger Model (lsm.html) '%fname)
-
 
 def compute_vis_noise (sefd):
     """Computes nominal per-visibility noise"""
