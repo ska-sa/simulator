@@ -1,181 +1,215 @@
-## Simulator Pipeline
-## Sphesihle Makhathini sphemakh@gmail.com
+## Rodrigues compatibale simulation pipeline 
+## sphesihle makhathini [sphemakh@gmail.com]
 
+import Pyxis
 import ms
-import mqt
-import lsm
+import mqt 
 import im
-from simms import simms
+import lsm
+import im.argo as argo
+from Pyxis.ModSupport import *
 
-mqt.MULTITHREAD = 8
-FITS = False
-TIGGER = False
-KATALOG = False
-CLEAN = False
-LSM = None
-SELECT = None
-NOISE = None
-COLUMN = 'CORRECTED_DATA'
+import pyfits
+import Tigger
+import numpy
+import os
+import numpy
+import math
+import json
+import simms
+import time
 
-TOTAL_SYNTHESIS = None
-
-OBSERVATORY = None
-POSITIONS = None
+PI = math.pi
+FWHM = math.sqrt( math.log(256) )
 
 
-def azishe(cfg='$CFG',make_image=True):
-    """ The driver for simulator """
+def simsky(msname='$MS', lsmname='$LSM', tdlsec='$TDLSEC', tdlconf='$TDLCONF',
+           column='$COLUMN', noise=0, args=[],
+           addToCol=None,**kw):
+    """ Simulates visibilities into an MS """
 
-    cfg = interpolate_locals('cfg')
-    ms_opts, im_opts, _deconv = load_from_json(cfg)
+    msname, lsmname, column, tdlsec, tdlconf = interpolate_locals('msname lsmname'
+        ' column tdlsec tdlconf')
     
-    global IMAGER
-    __import__('im.%s'%IMAGER)
-    for item in _deconv:
-        __import__('im.%s'%item)
-    
-    # convert frequencies to Hz. This assumes [freq0,dfreq] = MHz,kHz
-    freq0 = ms_opts['freq0']*1e6
-    del ms_opts['freq0']
-    dfreq = ms_opts['dfreq']*1e3
-    del ms_opts['dfreq']
-    
-    synthesis = ms_opts['synthesis']
+    fits = True if verify_sky(lsmname) is 'FITS' else False
 
-    if synthesis> 12:
-        ms_opts['synthesis'] = 12.0
-        scalenoise = math.sqrt(synthesis/12.0)
-    else:
-        scalenoise = 1
-    if not os.path.exists(MAKEMS_OUT):
-        x.mkdir(MAKEMS_OUT)
-    
-    msname = II('${MAKEMS_OUT>/}smakh%f.MS'%(time.time()))
-    simms.simms(freq0=freq0,msname=msname,dfreq=dfreq,pos=POSITIONS,pos_type='casa',
-                         tel=OBSERVATORY,**ms_opts)
     v.MS = msname
+    v.LSM = lsmname
+    _column = 'MODEL_DATA' if addToCol else column
+
+    if fits:
+        _column = 'MODEL_DATA' if noise else column
+        argo.predict_vis(lsmname, wprojplanes=128, column=_column)
+
+        if noise:
+            simnoise(noise=noise,addToCol=_column,column=column)
+    else:
+        args = ["${ms.MS_TDL} ${lsm.LSM_TDL}"] + list(args)
+
+        options = {}
+        options['ms_sel.output_column'] = _column
+
+        if noise:
+            options['noise_stddev'] = noise
+
+        mqt.run(TURBO_SIM, job='_tdl_job_1_simulate_MS',
+                config=tdlconf, section=tdlsec, options=options, args=args,**kw)
+
+    if addToCol:
+        tab = ms.msw()
+        col1 = tab.getcol(addToCol)
+        col2 = tab.getcol('MODEL_DATA')
+        comb = col1 + col2
+        nrows = len(comb)
+        rowchunk = nrows//5
+
+        for row0 in range(0,nrows,rowchunk):
+            nr = min(nrows-row0,rowchunk)
+            info('MODEL_DATA + $addToCol --> $column : rows %d-%d'%(row0,row0+nr) )
+            tab.putcol(column,comb[row0:row0+nr],row0,nr)
+        tab.close()
+
+document_globals(simsky,"MS LSM COLUMN TDLSEC TDLCONF")
+
+
+def azishe(config='$CFG'):
+
+    # Get parameters from json file    
+    with open(II(config)) as jsn_std:
+        params = json.load(jsn_std)
+
+    # Remove empty strings and convert unicode characters to strings
+    for key in params.keys():
+        if params[key] =="":
+            del params[key] 
+        elif isinstance(params[key],unicode):
+            params[key] = str(params[key])
+
+    get_opts = lambda prefix: filter(lambda a: a[0].startswith(prefix), params.items())
+
+    # Retrieve MS and imager options
+    ms_dict = dict([(key.split('ms_')[-1],val) for (key,val) in get_opts('ms_') ] )
+    im_dict = dict([(key.split('im_')[-1],val) for (key,val) in get_opts('im_') ] )
+
+    # Seperate deconvolution settings
+    _deconv = {}
+    for dcv in 'lwimager wsclean moresane casa'.split():
+        if params[dcv]:
+            _deconv.update( {dcv:dict([(key.split(dcv+'_')[-1],val) for (key,val) in get_opts(dcv+'_') ] )} )
     
-    #plot uv-coverage
+    # Set imaging options
+    im.IMAGER = params['imager'].lower()
+    for opt in 'npix weight robust mode stokes'.split():
+        if opt in params:
+            setattr(im,opt,im_dict.pop(opt))
+    im.cellsize = '%farcsec'%(im_dict.pop('cellsize'))
+
+    weight_fov = im_dict.pop('weight_fov')
+    if weight_fov:
+        im.weight_fov = '%farcmin'%weight_fov
+    
+    # Create empty MS
+    synthesis = ms_dict.pop('synthesis')
+    scalenoise = 1
+    if synthesis > 12:
+        scalenoise = math.sqrt(12.0/synthesis)
+    
+    msname = II('rodrigues%f.MS'%(time.time())) 
+    obs = params['observatory'].lower()
+    antennas = _OBS[obs]
+    
+    freq0 = ms_dict.pop('freq0')*1e6
+    dfreq = ms_dict.pop('dfreq')*1e3
+    direction = "J2000,%s,%s"%(ms_dict.pop('ra'),ms_dict.pop('dec'))
+    simms.create_empty_ms(msname=msname,synthesis=synthesis,freq0=freq0,
+                dfreq=dfreq,tel=obs,pos='%s/%s'%(OBSDIR,antennas),
+                direction=direction,**ms_dict)
+    if exists(msname):
+        v.MS = msname
+    else:
+        abort("Something went wrong while creating the empty MS. Please check logs for details")
+
     makedir(DESTDIR)
     ms.plot_uvcov(ms=.1,width=10,height=10,dpi=150,save="$OUTFILE-uvcov.png")
-    
-    ms.set_default_spectral_info()
 
-    if ADDNOISE:
-        noise = NOISE or compute_vis_noise(sefd=get_sefd(freq0)) * scalenoise
+    # Set noise for simulation
+    spwtab = ms.ms(subtable="SPECTRAL_WINDOW")
+    freq0 = spwtab.getcol("CHAN_FREQ")[ms.SPWID,0]
+    spwtab.close()
+    if params['add_noise']:
+        noise =  compute_vis_noise(sefd=get_sefd(freq0)) * scalenoise
     else:
         noise = 0
 
-    if TIGGER or FITS:
-        simsky(lsmname=FITS or TIGGER, noise=noise)
-        noise = 0 # we don't want to add the noise twice
+    # Simulate Visibilities
+    _katalog = params['katalog_id']
+    if _katalog:
+        katalog = '%s/%s'%(KATDIR,_KATALOG[params['katalog_id']])
 
-    if KATALOG:
-        fits = True if verify_sky(KATALOG) is 'FITS' else False
+        lsmname = II('${MS:BASE}.lsm.html')
+        x.sh('tigger-convert --recenter=$direction $katalog $lsmname -f')
+        simsky(lsmname=lsmname,tdlsec='turbo-sim:custom',noise=noise,column='CORRECTED_DATA')
 
-        tmp_std = tempfile.NamedTemporaryFile(suffix='.fits' if fits else '.lsm.html')
-        tmp_std.flush()
-        tmp_file = tmp_std.name
+    skymodel = params['sky_model']
+    if skymodel:
+        simsky(lsmname=skymodel,noise=0 if katalog else noise,addToCol='CORRECTED_DATA')
 
-        # construct selection to give to tigger-convert
-        select = ''
-        if RADIUS or FLUXRANGE:
-            if RADIUS: select += '--select="r<%fdeg" '%RADIUS
-            if FLUXRANGE: 
-                select += '--select="I<%f" '%FLUXRANGE[1]
-                select += '--select="I>%f" '%FLUXRANGE[0]
-        if not fits:
-            x.sh('tigger-convert %s --recenter=J2000,%s,%s %s %s -f'%(select,ms_opts['ra'],ms_opts['dec'],KATALOG,tmp_file))
-            #xo.sh('cp $tmp_file current.lsm.html')
-        else:
-            from pyrap.measures import measures
-            dm = measures()
-            direction = dm.direction('J2000',ms_opts[ra],ms_opts[dec])
-            ra = np.rad2deg(direction['m0']['value'])
-            dec = np.rad2deg(direction['m1']['value'])
-            hdu = pyfits.open(temp_file)
-            hdu[0].hdr['CRVAL1'] = ra
-            hdu[0].hdr['CRVAL2'] = dec
-            hdu.writeto(tmp_file,clobber=True)
+    ## Finally Lets image
+    # make dirty map
+    im.make_image(psf=True,**im_dict)
 
-        simsky(lsmname=tmp_file,addToCol=COLUMN,noise=noise)
-
-    tmp_std.close()
-
-    im.IMAGE_CHANNELIZE = CHANNELIZE
-    # Set these here to have a standard way of accepting them in the form
-    for opt in 'npix cellsize weight robust wprojplanes stokes weight_fov mode'.split():
-        if opt in im_opts:
-            if opt == 'stokes':
-                setattr(im,opt,im_opts[opt].upper())
-            elif opt in ['npix']:
-                setattr(im,opt,int(im_opts[opt]))
-            elif opt in ['robust']:
-                setattr(im,opt,float(im_opts[opt]))
-            elif opt == 'cellsize':
-                setattr(im,opt,im_opts[opt]+'arcsec')
-            elif opt == 'weight_fov':
-                setattr(im,opt,im_opts[opt]+'arcmin')
-            else: 
-                setattr(im,opt,im_opts[opt])
-            del im_opts[opt]
-
-    
-    if USE_DEFAULT_IMAGING_SETTINGS:
-        im_defaults(OBSERVATORY)
-
-    call_imager = eval('im.%s.make_image'%IMAGER)
-    dirty_image = II('${OUTFILE}-dirty.fits')
-    call_imager(dirty=True,psf=True,psf_image='${OUTFILE}-psf.fits',dirty_image=dirty_image,**im_opts)
-    noise = madnoise(dirty_image,channelise=CHANNELIZE,freq_axis=0)
-    info('Noise estimate from dirty image: %.3g mJy'%(noise*1e3))
-
+    # Deconvolve
     for deconv in _deconv:
-        restore = _deconv[deconv]
-
-        if deconv in 'wsclean casa lwimager'.split():
-            IMAGER = deconv
-            try:
-                im.threshold = '%.3gJy'%(float(restore['sigmalevel'])*noise)
-                del restore['sigmalevel']
-            # set niter vey high to ensure threshold is reached
-                im.niter = 10000 
-                del restore['niter']
-            except KeyError:
-                im.threshold = restore['threshold']+'Jy'
-                del restore['threshold']
-
-        if IMAGER=='casa':
-            for key,val in restore.iteritems():
-                if key in ['niter']:
-                    restore[key] = int(val)
-                else:
-                   try: restore[key] = float(val)
-                   except ValueError: "do nothing"
-        if deconv in STAND_ALONE_DECONV :
-            im_opts['algorithm'] = deconv
-
-        call_imager = eval('im.%s.make_image'%IMAGER)
-        call_imager(dirty=False,imager=deconv,restore=restore,restore_lsm=False,**im_opts)
+        if deconv in STAND_ALONE_DECONV:
+            im.make_image(dirty=False,dirty_image='temp_dirty.fits',algorithm=deconv.lower(),
+                    restore=_deconv[deconv],restore_lsm=False,**im_dict)
+            x.sh('rm -fr temp_dirty.fits')
+        else:
+            im.IMAGER = deconv.lower()
+            im.make_image(dirty=False,restore=_deconv[deconv],restore_lsm=False,**im_dict)
+            
+    
+def get_sefd(freq=650e6):
+    freq0 = freq*1e-6 # work in MHz
+    if np.logical_and(freq0>=580,freq0<=1020):
+        band = '1b'
+    elif np.logical_and(freq0>=900,freq0<=1670):
+        band = '2'
+    else :
+        warn('$freq0 MHz is is not within MeerKAT frequency range. Using SEFD for band 1b')
+        band = '1b'
+    return _SEFD['MKT'][band]
 
 
-def im_defaults(obs):
-    obs = obs.lower()
+def verify_sky(fname):
+    ext = fname.split('.')[-1]
+    if ext.lower() == 'fits':
+        return 'FITS'
+    elif ext.lower() == 'txt' or fname.endswith('.lsm.html'):
+        return 'TIGGER'
+    else:
+        raise TypeError('Sky model "%s" has to be either one of FITS,ASCII,Tigger Model (lsm.html) '%fname)
 
-    if obs == 'meerkat':
-        im.npix = 2048
-        im.cellsize = '2.5arcsec'
-        im.weight = 'briggs'
-        im.robust = 0
 
-    elif obs == 'kat-7':
-        im.npix = 512
-        im.cellsize = '30arcsec'
-        im.weight = 'briggs'
-        im.robust = 0
+def compute_vis_noise (sefd):
+    """Computes nominal per-visibility noise"""
 
-    elif obs == 'vla':
-        im.npix = 1024
-        im.cellsize = '2arcsec'
-        im.weight = 'briggs'
-        im.robust = 0
+    sefd = sefd or SEFD
+    tab = ms.ms()
+    spwtab = ms.ms(subtable="SPECTRAL_WINDOW")
+
+    freq0 = spwtab.getcol("CHAN_FREQ")[ms.SPWID,0]
+    wavelength = 300e+6/freq0
+    bw = spwtab.getcol("CHAN_WIDTH")[ms.SPWID,0]
+    dt = tab.getcol("EXPOSURE",0,1)[0]
+    dtf = (tab.getcol("TIME",tab.nrows()-1,1)-tab.getcol("TIME",0,1))[0]
+
+    # close tables properly, else the calls below will hang waiting for a lock...
+    tab.close()
+    spwtab.close()
+
+    info(">>> $MS freq %.2f MHz (lambda=%.2fm), bandwidth %.2g kHz, %.2fs integrations, %.2fh synthesis"%(freq0*1e-6,wavelength,bw*1e-3,dt,dtf/3600))
+    noise = sefd/math.sqrt(2*bw*dt)
+    info(">>> SEFD of %.2f Jy gives per-visibility noise of %.2f mJy"%(sefd,noise*1000))
+
+    return noise 
