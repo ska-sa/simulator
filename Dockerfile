@@ -1,7 +1,9 @@
 FROM radioastro/meqtrees
 RUN apt-get install -y time wsclean
 
-ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/casapy
+ENV PATH /code/depends/PyMORESANE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/casapy
+ENV PYTHONPATH /code/depends/simms:$PYTHONPATH
+
 ENV USER root
 
 ADD casapy-42.2.30986-1-64b.tar.gz /opt/
@@ -21,6 +23,7 @@ RUN apt-get update && apt-get -qy install \
     libkrb5-3 \
     libgssapi-krb5-2
 
+ADD input /code
 ADD src /code
 RUN ln -s /code/run.sh /run.sh
 

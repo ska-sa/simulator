@@ -45,7 +45,7 @@ def create_empty_ms(msname=None,label=None,tel=None,pos=None,pos_type='casa',
           fromknown=False):
 
     """ Make simulated measurement set """
-    abort('HEEEEEEERRRRRRRRRRRRRREEEEEEEEEEEEE')
+
     # MS frequency set up
     def toList(string,delimiter=',',f0=False):
         if isinstance(string,(list,tuple)):

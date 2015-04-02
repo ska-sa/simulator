@@ -99,6 +99,8 @@ def azishe(config='$CFG'):
     
     # Set imaging options
     im.IMAGER = params['imager'].lower()
+    __import__('im.%s'%(im.IMAGER))
+    call_imager = eval('im.%s.make_image'%(im.IMAGER))
     for opt in 'npix weight robust mode stokes'.split():
         if opt in params:
             setattr(im,opt,im_dict.pop(opt))
@@ -146,7 +148,7 @@ def azishe(config='$CFG'):
     if _katalog:
         katalog = '%s/%s'%(KATDIR,_KATALOG[params['katalog_id']])
 
-        lsmname = II('${MS:BASE}.lsm.html')
+        lsmname = II('${OUTDIR>/}${MS:BASE}.lsm.html')
 
         radius = float(params['radius'])
         fluxrange = params['fluxrange'].split('-')
@@ -184,17 +186,19 @@ def azishe(config='$CFG'):
 
     ## Finally Lets image
     # make dirty map
-    im.make_image(psf=True,**im_dict)
+    call_imager(psf=True,**im_dict)
 
     # Deconvolve
     for deconv in _deconv:
         if deconv in STAND_ALONE_DECONV:
-            im.make_image(dirty=False,dirty_image='temp_dirty.fits',algorithm=deconv.lower(),
+            call_imager(dirty=False,dirty_image='temp_dirty.fits',algorithm=deconv.lower(),
                     restore=_deconv[deconv],restore_lsm=False,**im_dict)
             x.sh('rm -fr temp_dirty.fits')
         else:
             im.IMAGER = deconv.lower()
-            im.make_image(dirty=False,restore=_deconv[deconv],restore_lsm=False,**im_dict)
+            __import__('im.%s'%(im.IMAGER))
+            call_imager = eval('im.%s.make_image'%(im.IMAGER))
+            call_imager(dirty=False,restore=_deconv[deconv],restore_lsm=False,**im_dict)
     xo.sh('tar -czvf ${OUTDIR>/}${MS:BASE}.tar.gz $msname')
             
     
