@@ -6,7 +6,9 @@ else
     DATA=$1
 fi
 
-export PATH=/code/PyMORESANE/bin:$PATH
+export PATH=/code/depends/PyMORESANE/bin:$PATH
+export PATH=/code/depends/simms/bin:$PATH
+export PYTHONPATH=/code/depends/simms:$PYTHONPATH
 
 if [ -z "$USER" ]; then
   export USER=root
