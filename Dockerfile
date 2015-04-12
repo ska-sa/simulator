@@ -1,5 +1,5 @@
 FROM radioastro/meqtrees
-RUN apt-get install -y time wsclean
+RUN apt-get update && apt-get install -y time wsclean
 
 ENV PATH /code/depends/PyMORESANE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/casapy
 ENV PYTHONPATH /code/depends/simms:$PYTHONPATH
