@@ -13,15 +13,16 @@ To run this simulator, you need supply the simulator a configuration file; param
 **This is what you need to install** 
 
 You can find most of debeian packages for most these [here](https://launchpad.net/~radio-astro/+archive/ubuntu/main), or git repositories [here](github.com/ska-sa)
-1. Meqtrees Timba
-2. Meqtrees Cattery, Owlcat, Purr
-3. [simms](https://github.com/sphemakh/simms)
-4. Pyxis
-5. LWIMAGER
-6. WSClean
-7. Casacore, casacore data
-8. CASAPY
-9. PyMORESANE
+
+1. Meqtrees Timba  
+2. Meqtrees Cattery, Owlcat, Purr  
+3. [simms](https://github.com/sphemakh/simms)  
+4. Pyxis  
+5. LWIMAGER  
+6. WSClean  
+7. Casacore, casacore data  
+8. CASAPY  
+9. PyMORESANE  
 
 Once you have all these installed, you can run the simulator in `src` folder. Run it as:
 ```
