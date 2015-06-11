@@ -10,7 +10,7 @@ To run this simulator, you need supply the simulator a configuration file; param
 
 ## With Docker (Not Recomended)
 
-** This is what you need to install** 
+**This is what you need to install** 
 
 You can find most of debeian packages for most these [here](https://launchpad.net/~radio-astro/+archive/ubuntu/main), or git repositories [here](github.com/ska-sa)
 1. Meqtrees Timba
