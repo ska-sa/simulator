@@ -8,7 +8,7 @@ You can image using LWIMAGER, [WSCLEAN](http://sourceforge.net/projects/wsclean)
 ## Running the simulator
 To run this simulator, you need supply the simulator a configuration file; parameters.json is an example.
 
-## With Docker (Not Recomended)
+### Without Docker (Not Recommended)
 
 **This is what you need to install** 
 
@@ -33,7 +33,7 @@ for help run:
 pyxis help[azishe]
 ```
 
-# With Docker (Recomended)
+### With Docker (Recommended)
 Fisrt make sure you have docker(>=1.3); **not the default Ubuntu docker.io package**.   
 https://docs.docker.com/installation/ubuntulinux/#ubuntu-trusty-1404-lts-64-bit
 
