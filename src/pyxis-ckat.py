@@ -5,6 +5,7 @@ import Pyxis
 import ms
 import mqt 
 import im
+import imager
 import lsm
 import im.argo as argo
 from Pyxis.ModSupport import *
@@ -16,8 +17,11 @@ import os
 import numpy
 import math
 import json
-import simms
+from Simms import simms
 import time
+
+import im.moresane
+
 
 PI = math.pi
 FWHM = math.sqrt( math.log(256) )
@@ -83,7 +87,7 @@ def azishe(config='$CFG'):
         if params[key] =="":
             del params[key] 
         elif isinstance(params[key],unicode):
-            params[key] = str(params[key])
+            params[key] = str(params[key]).lower()
 
     get_opts = lambda prefix: filter(lambda a: a[0].startswith(prefix), params.items())
 
@@ -98,13 +102,12 @@ def azishe(config='$CFG'):
             _deconv.update( {dcv:dict([(key.split(dcv+'_')[-1],val) for (key,val) in get_opts(dcv+'_') ] )} )
     
     # Set imaging options
-    im.IMAGER = params['imager'].lower()
-    __import__('im.%s'%(im.IMAGER))
-    call_imager = eval('im.%s.make_image'%(im.IMAGER))
+    im.IMAGER = imager.IMAGER = params['imager'].lower()
     for opt in 'npix weight robust mode stokes'.split():
-        if opt in params:
+        if opt in im_dict.keys():
             setattr(im,opt,im_dict.pop(opt))
     im.cellsize = '%farcsec'%(im_dict.pop('cellsize'))
+    im.stokes = im.stokes.upper()
 
     weight_fov = im_dict.pop('weight_fov')
     if weight_fov:
@@ -186,22 +189,38 @@ def azishe(config='$CFG'):
 
     ## Finally Lets image
     # make dirty map
-    call_imager(psf=True,**im_dict)
+    im.make_image(psf=True,**im_dict)
 
     # Deconvolve
     for deconv in _deconv:
+	global IMAGER
+	IMAGER = deconv
         if deconv in STAND_ALONE_DECONV:
-            call_imager(dirty=False,dirty_image='temp_dirty.fits',algorithm=deconv.lower(),
-                    restore=_deconv[deconv],restore_lsm=False,**im_dict)
-            x.sh('rm -fr temp_dirty.fits')
+            #TODO(sphe) Will have to correct this later
+            dirty_im = im.DIRTY_IMAGE   
+            psf_im = im.PSF_IMAGE
+            im.IMAGER = deconv.lower()
+            im.moresane.deconv(image_prefix="moresane_qaz123",psf_image=psf_im, dirty_image=dirty_im, path="runsane", **_deconv[deconv])
         else:
             im.IMAGER = deconv.lower()
-            __import__('im.%s'%(im.IMAGER))
-            call_imager = eval('im.%s.make_image'%(im.IMAGER))
-            call_imager(dirty=False,restore=_deconv[deconv],restore_lsm=False,**im_dict)
+            im.make_image(dirty=False,restore=_deconv[deconv],restore_lsm=False,**im_dict)
+
     xo.sh('tar -czvf ${OUTDIR>/}${MS:BASE}.tar.gz $msname')
             
-    
+
+def set_defaults(msname='$MS',psf=False):
+    """ Extract some basic information about the data"""
+
+    tab = ms.ms()
+    uvmax = max( tab.getcol("UVW")[:2].sum(0)**2 )
+    res = 1.22*((2.998e8/freq)/maxuv)/2.
+    im.cellsize = "%farcsec"%(numpy.rad2deg(res/6)*3600)
+    im.stokes = 'I' # make a brightness map by default
+    im.npix = 2048
+    im.mode = 'channel'
+    im.IMAGE_CHANNELIZE = 0
+
+
 def get_sefd(freq=650e6):
     freq0 = freq*1e-6 # work in MHz
     if np.logical_and(freq0>=580,freq0<=1020):
