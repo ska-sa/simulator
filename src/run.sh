@@ -10,8 +10,8 @@ if [ -z "$USER" ]; then
   export USER=root
 fi
 
-echo "where are we now"
-pwd
+echo "The config file is"
+echo ${config}
 
-pyxis CFG=${DATA}/input/parameters.json OUTFILE=/${DATA}/output/results OUTDIR=${DATA}/output azishe
+pyxis CFG=/input/${config} OUTFILE=/${DATA}/output/results OUTDIR=${DATA}/output azishe
 

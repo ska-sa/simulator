@@ -1,8 +1,19 @@
 FROM radioastro/meqtrees
-RUN apt-get update && apt-get install -y time wsclean
+RUN apt-get update
+RUN apt-get install -y time wsclean git casacore python-pip python-pymoresane --fix-missing
 
-ENV PATH /code/depends/PyMORESANE/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/casapy
-ENV PYTHONPATH /code/depends/simms:$PYTHONPATH
+RUN mkdir -p /code/depends
+RUN git clone https://github.com/ska-sa/pyxis /code/depends/pyxis
+RUN git clone https://github.com/SpheMakh/simms -b package /code/depends/simms
+RUN git clone https://github.com/ska-sa/owlcat -b fiela /code/depends/owlcat
+RUN pip install psutil
+
+RUN cd /code/depends/simms && python setup.py install
+RUN cd /code/depends/owlcat && python setup.py install
+RUN ln -s /usr/bin/runsane moresane
+
+ENV PATH /code/depends/pyxis/Pyxis/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/casapy
+ENV PYTHONPATH /code/depends/pyxis:$PYTHONPATH
 
 ENV USER root
 
@@ -31,6 +42,3 @@ RUN mkdir /input /output
 
 WORKDIR /code
 cmd /run.sh
-
-
-
