@@ -43,7 +43,7 @@ Once you got docker set up. You can run the simulator as follows:
 2. Build container `$ make build`
 3. Run simulation `$ make run config=json_config_file`
 
-** Please Note**
+**Please Note**
 
 * You only have to run `make download` once
 * You will need to re-build the container (run `make build`) everytime the pipeline changes
