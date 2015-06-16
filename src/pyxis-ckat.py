@@ -7,7 +7,7 @@ import mqt
 import im
 import imager
 import lsm
-import im.argo as argo
+import im.argo
 from Pyxis.ModSupport import *
 
 import pyfits
@@ -17,11 +17,7 @@ import os
 import numpy
 import math
 import json
-from Simms import simms
 import time
-
-import im.moresane
-
 
 PI = math.pi
 FWHM = math.sqrt( math.log(256) )
@@ -43,7 +39,7 @@ def simsky(msname='$MS', lsmname='$LSM', tdlsec='$TDLSEC', tdlconf='$TDLCONF',
 
     if fits:
         _column = 'MODEL_DATA' if noise else column
-        argo.predict_vis(lsmname, wprojplanes=128, column=_column)
+        im.argo.predict_vis(lsmname, wprojplanes=128, column=_column)
 
         if noise:
             simnoise(noise=noise,addToCol=_column,column=column)
@@ -80,15 +76,23 @@ def azishe(config='$CFG'):
 
     # Get parameters from json file    
     with open(II(config)) as jsn_std:
-        params = json.load(jsn_std)
+        jparams = json.load(jsn_std)
 
     # Remove empty strings and convert unicode characters to strings
-    for key in params.keys():
-        if params[key] =="":
-            del params[key] 
-        elif isinstance(params[key],unicode):
-            params[key] = str(params[key]).lower()
+    params = {}
+    for key, val in jparams.iteritems():
+        # Make sure all keys are strings
+        _key = str(key)
 
+        # ignore empty strings and comments
+        if val=="" or _key=="#":
+            pass
+        # convert unicode values to strings
+        elif isinstance(val,unicode):
+            params[_key] = str(val).lower()
+        else:
+            params[_key] = val
+ 
     get_opts = lambda prefix: filter(lambda a: a[0].startswith(prefix), params.items())
 
     # Retrieve MS and imager options
@@ -126,7 +130,7 @@ def azishe(config='$CFG'):
     freq0 = ms_dict.pop('freq0')*1e6
     dfreq = ms_dict.pop('dfreq')*1e3
     direction = "J2000,%s,%s"%(ms_dict.pop('ra'),ms_dict.pop('dec'))
-    simms.create_empty_ms(msname=msname,synthesis=synthesis,freq0=freq0,
+    ms.create_empty_ms(msname=msname,synthesis=synthesis,freq0=freq0,
                 dfreq=dfreq,tel=obs,pos='%s/%s'%(OBSDIR,antennas),
                 direction=direction,**ms_dict)
     if exists(msname):
@@ -193,16 +197,11 @@ def azishe(config='$CFG'):
 
     # Deconvolve
     for deconv in _deconv:
-	global IMAGER
-	IMAGER = deconv
+        deconv = deconv.lower()
         if deconv in STAND_ALONE_DECONV:
-            #TODO(sphe) Will have to correct this later
-            dirty_im = im.DIRTY_IMAGE   
-            psf_im = im.PSF_IMAGE
-            im.IMAGER = deconv.lower()
-            im.moresane.deconv(image_prefix="moresane_qaz123",psf_image=psf_im, dirty_image=dirty_im, path="runsane", **_deconv[deconv])
+            im.make_image(algorithm=deconv,restore=_deconv[deconv],restore_lsm=False,**im_dict)
         else:
-            im.IMAGER = deconv.lower()
+            im.IMAGER = deconv
             im.make_image(dirty=False,restore=_deconv[deconv],restore_lsm=False,**im_dict)
 
     xo.sh('tar -czvf ${OUTDIR>/}${MS:BASE}.tar.gz $msname')
