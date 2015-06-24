@@ -5,6 +5,7 @@ RUN apt-get update &&  apt-get install -y \
     git \
     casacore \
     python-pymoresane
+    python-pip
 
 pip install simms
 RUN mkdir -p /code/depends
