@@ -4,10 +4,10 @@ RUN apt-get update &&  apt-get install -y \
     wsclean \
     git \
     casacore \
-    python-pymoresane
+    python-pymoresane \
     python-pip
 
-pip install simms
+RUN pip install simms
 RUN mkdir -p /code/depends
 RUN git clone https://github.com/ska-sa/pyxis /code/depends/pyxis
 
