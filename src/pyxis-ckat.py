@@ -123,16 +123,22 @@ def azishe(config='$CFG'):
     if synthesis > 12:
         scalenoise = math.sqrt(12.0/synthesis)
     
-    msname = II('rodrigues%f.MS'%(time.time())) 
+    msname = "smakh%s.MS"%( ("%f"%time.time()).replace(".","")  )
     obs = params['observatory'].lower()
-    antennas = _OBS[obs]
+    antennas = "%s/%s"%(OBSDIR,_OBS[obs])
+    if obs.find("vla")>=0:
+        obs = "vla"
     
     freq0 = ms_dict.pop('freq0')*1e6
     dfreq = ms_dict.pop('dfreq')*1e3
     direction = "J2000,%s,%s"%(ms_dict.pop('ra'),ms_dict.pop('dec'))
-    ms.create_empty_ms(msname=msname,synthesis=synthesis,freq0=freq0,
-                dfreq=dfreq,tel=obs,pos='%s/%s'%(OBSDIR,antennas),
-                direction=direction,**ms_dict)
+
+    pos_type = 'casa' if os.path.isdir(antennas) else 'ascii'
+
+    ms.create_empty_ms(msname=msname, synthesis=synthesis, freq0=freq0,
+                dfreq=dfreq, tel=obs, pos=antennas,
+                direction=direction, pos_type=pos_type, coords='itrf', **ms_dict)
+
     if exists(msname):
         v.MS = msname
     else:
@@ -193,6 +199,11 @@ def azishe(config='$CFG'):
 
     ## Finally Lets image
     # make dirty map
+    im.IMAGE_CHANNELIZE = params["channelise"]
+    if params["use_default_im"]:
+        set_defaults()
+        im_dict = {}
+
     im.make_image(psf=True,**im_dict)
 
     # Deconvolve
@@ -211,13 +222,22 @@ def set_defaults(msname='$MS',psf=False):
     """ Extract some basic information about the data"""
 
     tab = ms.ms()
-    uvmax = max( tab.getcol("UVW")[:2].sum(0)**2 )
-    res = 1.22*((2.998e8/freq)/maxuv)/2.
+    uvmax = (tab.getcol("UVW").T[:2]**2).sum(0).max()**.5
+
+    spwtab = ms.ms(subtable="SPECTRAL_WINDOW")
+    freq = spwtab.getcol("CHAN_FREQ")[ms.SPWID, 0]
+
+    res = 1.22*((2.998e8/freq)/uvmax)/2.
     im.cellsize = "%farcsec"%(numpy.rad2deg(res/6)*3600)
     im.stokes = 'I' # make a brightness map by default
     im.npix = 2048
     im.mode = 'channel'
+    im.weight = 'uniform'
+
     im.IMAGE_CHANNELIZE = 0
+
+    spwtab.close()
+    tab.close()
 
 
 def get_sefd(freq=650e6):

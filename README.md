@@ -8,6 +8,20 @@ You can image using LWIMAGER, [WSCLEAN](http://sourceforge.net/projects/wsclean)
 ## Running the simulator
 To run this simulator, you need supply the simulator a configuration file; parameters.json is an example.
 
+### Available Telescopes
+
+| Key | Array |
+| ------|-----|
+|meerkat|MeerKAT|
+|kat-7|KAT-7|
+|jvla-a|JVLA A Config|
+|jvla-b|JVLA B Config|
+|jvla-c|JVLA C Config|
+|jvla-d|JVLA D Config|
+|wsrt|WSRT|
+
+
+
 ### Without Docker (Not Recommended)
 
 **This is what you need to install** 
