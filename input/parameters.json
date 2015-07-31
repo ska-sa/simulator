@@ -30,6 +30,7 @@
    "casa_threshold":0.0,
    "casa_gridmode":"widefield",
    "ms_synthesis":0.25,
+   "ms_date":null,
    "im_weight":"natural",
    "lwimager_sigmalevel":0.0,
    "im_weight_fov":null,

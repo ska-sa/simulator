@@ -124,10 +124,10 @@ def azishe(config='$CFG'):
         scalenoise = math.sqrt(12.0/synthesis)
     
     msname = "smakh%s.MS"%( ("%f"%time.time()).replace(".","")  )
-    obs = params['observatory'].lower()
-    antennas = "%s/%s"%(OBSDIR,_OBS[obs])
-    if obs.find("vla")>=0:
-        obs = "vla"
+    obsname = params['observatory'].lower()
+    obs = _OBS[obsname]
+
+    antennas = "%s/%s"%(OBSDIR,_ANT[obsname])
     
     freq0 = ms_dict.pop('freq0')*1e6
     dfreq = ms_dict.pop('dfreq')*1e3
@@ -151,6 +151,7 @@ def azishe(config='$CFG'):
     spwtab = ms.ms(subtable="SPECTRAL_WINDOW")
     freq0 = spwtab.getcol("CHAN_FREQ")[ms.SPWID,0]
     spwtab.close()
+
     if params['add_noise']:
         noise =  compute_vis_noise(sefd=get_sefd(freq0)) * scalenoise
     else:
