@@ -1,44 +1,32 @@
-FROM radioastro/meqtrees
-RUN apt-get update &&  apt-get install -y \
-    time \
-    wsclean \
-    git \
-    casacore \
-    python-pymoresane
+FROM radioastro/casa:4.2
 
-RUN mkdir -p /code/depends
-RUN git clone https://github.com/ska-sa/pyxis /code/depends/pyxis
-RUN git clone https://github.com/SpheMakh/simms -b package /code/depends/simms
+RUN apt-get update &&  \
+    apt-get install -y \
+        time \
+        wsclean \
+        python-pip \
+        python-casacore \
+        python-numpy \
+        python-pyfits \
+        python-owlcat \
+        python-kittens \
+        python-scipy \
+        python-astlib \
+        python-meqtrees-cattery \
+        python-tigger \
+        python-pyxis \
+    && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-RUN cd /code/depends/simms && python setup.py install
-RUN cd /code/depends/pyxis && python setup.py install
+RUN pip install pymoresane simms 
 
-ENV PATH /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/casapy
-
-ENV USER root
-
-ADD casapy-42.2.30986-1-64b.tar.gz /opt/
-RUN ln -s /opt/casapy-42.2.30986-1-64b /opt/casapy
-
-RUN apt-get update && apt-get -qy install \
-    libglib2.0-0 \
-    libfreetype6 \
-    libsm6 \
-    libxi6 \
-    libxrender1 \
-    libxrandr2 \
-    libxfixes3 \
-    libxcursor1 \
-    libxinerama1 \
-    libfontconfig1 \
-    libkrb5-3 \
-    libgssapi-krb5-2
-
-ADD input /code
 ADD src /code
-RUN ln -s /code/run.sh /run.sh
 
 RUN mkdir /input /output
 
+ENV MEQTREES_CATTERY_PATH /usr/lib/python2.7/dist-packages/Cattery
+
+ADD param_spec.yml /
+
 WORKDIR /code
-cmd /run.sh
+CMD /code/run.sh

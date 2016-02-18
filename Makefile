@@ -7,16 +7,10 @@ endif
 
 .PHONY: all build run force-build
 
-all: download build run
-
-download:
-	./download.sh
+all: build run
 
 build:
 	docker build -t $(IMAGE_NAME) .
-
-force-build:
-	docker build --pull -t $(IMAGE_NAME) --no-cache=true .
 
 run:
 	docker run -v `pwd`/input:/input:ro -v `pwd`/output:/output:rw -e config=$(config) $(IMAGE_NAME)
