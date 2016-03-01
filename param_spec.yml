@@ -243,7 +243,7 @@ sections:
          name: lwimager_threshold
          type: float
          label: Clean Threshold
-         initial: 0,
+         initial: 0.0
          help_text: In Jy
 
        -
@@ -318,7 +318,7 @@ sections:
          name: wsclean_threshold
          type: float
          label: Clean Threshold
-         initial: 0,
+         initial: 0
          help_text: In Jy
        -
          name: wsclean_sigmalevel
@@ -527,7 +527,7 @@ sections:
          name: moresane_sigmalevel 
          type: float
          label: Threshold level
-         initial: 3,
+         initial: 3
          help_text: in sigma above noise
        -
          name: moresane_loopgain 

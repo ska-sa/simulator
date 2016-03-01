@@ -6,12 +6,5 @@ else
     DATA=$1
 fi
 
-if [ -z "$USER" ]; then
-  export USER=root
-fi
-
-echo "The config file is"
-echo ${config}
-
-pyxis CFG=/input/${config} OUTFILE=/${DATA}/output/results OUTDIR=${DATA}/output azishe
+pyxis CFG=/input/parameters.json OUTFILE=/${DATA}/output/results OUTDIR=${DATA}/output azishe
 
