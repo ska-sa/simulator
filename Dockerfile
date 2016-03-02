@@ -12,9 +12,9 @@ RUN apt-get update &&  \
         python-kittens \
         python-scipy \
         python-astlib \
-        python-meqtrees-cattery \
         python-tigger \
         python-pyxis \
+        meqtrees \
     && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -26,7 +26,7 @@ RUN mkdir /input /output
 
 ENV MEQTREES_CATTERY_PATH /usr/lib/python2.7/dist-packages/Cattery
 
-ADD param_spec.yml /
+ADD kliko.yml /
 
 WORKDIR /code
 CMD /code/run.sh
