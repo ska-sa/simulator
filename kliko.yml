@@ -5,6 +5,7 @@ container: skasa/simulator
 author: Gijs Molenaar
 email: gijsmolenaar@gmail.com
 url: http://github.com/ska-sa/rodrigues/
+io: split
 
 sections:
   -
