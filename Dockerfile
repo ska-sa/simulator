@@ -26,7 +26,8 @@ RUN mkdir /input /output
 
 ENV MEQTREES_CATTERY_PATH /usr/lib/python2.7/dist-packages/Cattery
 
-ADD kliko.yml /
+ADD kliko.yml /kliko.yml
+ADD src/run.sh /kliko
 
 WORKDIR /code
-CMD /code/run.sh
+CMD /kliko

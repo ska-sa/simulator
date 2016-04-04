@@ -13,7 +13,15 @@ build:
 	docker build -t $(IMAGE_NAME) .
 
 run:
-	docker run -ti -v `pwd`/input:/input:ro -v `pwd`/output:/output:rw -e config=$(config) $(IMAGE_NAME)
+	docker run -ti \
+		-v `pwd`/input/parameters.json:/parameters.json:ro \
+		-v `pwd`/input:/input:ro \
+		-v `pwd`/output:/output:rw \
+		-e config=$(config) \
+		$(IMAGE_NAME)
 
 shell:
-	docker run -ti -v `pwd`/input:/input:ro -v `pwd`/output:/output:rw $(IMAGE_NAME) bash
+	docker run -ti \
+		-v `pwd`/input:/input:ro \
+		-v `pwd`/output:/output:rw \
+		$(IMAGE_NAME) bash
