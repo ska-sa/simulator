@@ -1,7 +1,6 @@
-FROM radioastro/casa:4.2
+FROM kernsuite/casa:4.7
 
-RUN apt-get update &&  \
-    apt-get install -y \
+RUN docker-apt-install \
         time \
         wsclean \
         python-pip \
@@ -14,11 +13,11 @@ RUN apt-get update &&  \
         python-astlib \
         python-tigger \
         python-pyxis \
-        meqtrees \
-    && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+        python-pymoresane \
+        meqtrees 
 
-RUN pip install pymoresane simms 
+# we need to get simms from pypi since it depends on the unpackaged casa
+RUN pip install simms 
 
 ADD src /code
 
